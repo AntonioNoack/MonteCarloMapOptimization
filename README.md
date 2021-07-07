@@ -15,4 +15,4 @@ This experiment is using [my video editor Rem's Studio](https://github.com/Anton
 - different distance metrics usable for optimization; can be changed at runtime as well
 - a button to restart 😄
 
-![Preview of the program](blob/main/img/preview.png?raw=true)
+![Preview of the program](https://raw.githubusercontent.com/AntonioNoack/MonteCarloMapOptimization/main/img/preview.png)
