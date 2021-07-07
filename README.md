@@ -16,3 +16,10 @@ This experiment is using [my video editor Rem's Studio](https://github.com/Anton
 - a button to restart 😄
 
 ![Preview of the program](https://raw.githubusercontent.com/AntonioNoack/MonteCarloMapOptimization/main/img/preview.png)
+
+## Download
+- and yeah, the executable is just that large, because it uses my video editor
+- but it makes all stuff easier, that's why I use it
+- you need to have Java installed
+
+[Download it here as an .jar file](https://phychi.com/download/MonteCarloVoteGerrymandering.jar)
