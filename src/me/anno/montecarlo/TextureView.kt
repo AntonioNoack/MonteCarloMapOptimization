@@ -6,7 +6,7 @@ import me.anno.montecarlo.Studio.map
 import me.anno.montecarlo.Studio.tex
 import me.anno.ui.base.Panel
 
-object TextureView : Panel(style) {
+class TextureView : Panel(style) {
 
     override fun tickUpdate() {
         super.tickUpdate()

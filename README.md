@@ -14,3 +14,5 @@ This experiment is using [my video editor Rem's Studio](https://github.com/Anton
 - play with the randomness at runtime
 - different distance metrics usable for optimization; can be changed at runtime as well
 - a button to restart 😄
+
+![Preview of the program](blob/main/img/preview.png?raw=true)

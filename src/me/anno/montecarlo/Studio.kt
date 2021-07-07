@@ -1,24 +1,29 @@
 package me.anno.montecarlo
 
 import me.anno.animation.Type
+import me.anno.config.DefaultConfig
 import me.anno.config.DefaultConfig.style
 import me.anno.gpu.GFX.windowStack
 import me.anno.gpu.Window
 import me.anno.gpu.texture.Texture2D
 import me.anno.image.Image
 import me.anno.input.ActionManager
+import me.anno.input.Input
 import me.anno.io.files.FileReference.Companion.getReference
 import me.anno.io.files.InvalidRef
 import me.anno.language.translation.Dict
 import me.anno.language.translation.NameDesc
 import me.anno.studio.StudioBase
 import me.anno.studio.rems.StudioActions
+import me.anno.ui.base.Panel
 import me.anno.ui.base.Visibility
 import me.anno.ui.base.groups.PanelListY
 import me.anno.ui.base.scrolling.ScrollPanelY
 import me.anno.ui.custom.CustomList
 import me.anno.ui.editor.OptionBar
+import me.anno.ui.editor.UILayouts
 import me.anno.ui.editor.color.spaces.HSLuv
+import me.anno.ui.editor.config.ConfigPanel
 import me.anno.ui.input.EnumInput
 import me.anno.ui.input.FileInput
 import me.anno.ui.input.FloatInput
@@ -28,11 +33,12 @@ import me.anno.utils.io.ResourceHelper
 import org.joml.Vector3f
 import org.lwjgl.system.MemoryUtil
 import java.awt.image.BufferedImage
+import java.lang.Exception
 import java.util.*
 import javax.imageio.ImageIO
 import kotlin.math.*
 
-object Studio : StudioBase(false, "Test", 0) {
+object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimization", 0) {
 
     var iterationsPerFrame = 100000
 
@@ -71,11 +77,11 @@ object Studio : StudioBase(false, "Test", 0) {
             calculatePopulation()
         }
 
-        // todo calculate the base stats
         val populationCount = IntArray(colorMap.size)
         val centerXSum = LongArray(colorMap.size)
         val centerYSum = LongArray(colorMap.size)
 
+        // calculate the base stats
         fun calculatePopulation() {
             for (y in 0 until height) {
                 for (x in 0 until width) {
@@ -363,24 +369,44 @@ object Studio : StudioBase(false, "Test", 0) {
 
     fun restart() {
 
-        val colorMap = IntArray(districtCount + 1) {
-            if (it == 0) 0 // black
-            else {
-                // map the colors from a HSLuv map
-                HSLuv.toRGB(Vector3f(it.toFloat() / districtCount, 0.7f, 0.7f)).toHex()
-            }
-        }
+        try {
 
-        val input = if (texturePath.startsWith("res://"))
-            ResourceHelper.loadResource(texturePath.substring(6))
-        else getReference(texturePath).inputStream()
-        map = RawImage(ImageIO.read(input), colorMap)
-        tex?.destroy()
-        tex = Texture2D("map", map.width, map.height, 1)
+            val colorMap = IntArray(districtCount + 1) {
+                if (it == 0) 0 // black
+                else {
+                    // map the colors from a HSLuv map
+                    HSLuv.toRGB(Vector3f(it.toFloat() / districtCount, 0.7f, 0.7f)).toHex()
+                }
+            }
+
+            val input = if (texturePath.startsWith("res://"))
+                ResourceHelper.loadResource(texturePath.substring(6))
+            else getReference(texturePath).inputStream()
+            map = RawImage(ImageIO.read(input), colorMap)
+            tex?.destroy()
+            tex = Texture2D("map", map.width, map.height, 1)
+
+        } catch (e: Exception){
+            e.printStackTrace()
+        }
 
     }
 
+    fun createReloadWindow(panel: Panel, fullscreen: Boolean): Window {
+        return object : Window(
+            panel, fullscreen,
+            if (fullscreen) 0 else Input.mouseX.toInt(),
+            if (fullscreen) 0 else Input.mouseY.toInt()
+        ) {
+            override fun destroy() {
+                createUI()
+            }
+        }
+    }
+
     override fun createUI() {
+
+        windowStack.clear()
 
         Dict.loadDefault()
 
@@ -393,12 +419,24 @@ object Studio : StudioBase(false, "Test", 0) {
         options.addMajor("Restart") {
             restart()
         }
+        options.addAction("Config", Dict["Settings", "ui.top.config.settings"]) {
+            val panel = ConfigPanel(DefaultConfig, false, style)
+            val window = createReloadWindow(panel, true)
+            panel.create()
+            windowStack.push(window)
+        }
+        options.addAction("Config", Dict["Style", "ui.top.config.style"]) {
+            val panel = ConfigPanel(style.values, true, style)
+            val window = createReloadWindow(panel, true)
+            panel.create()
+            windowStack.push(window)
+        }
 
         y.add(options)
 
         val x = CustomList(false, style)
 
-        val sceneView = TextureView
+        val sceneView = TextureView()
         x.add(sceneView)
         sceneView.weight = 1f
 
