@@ -21,7 +21,6 @@ import me.anno.ui.base.groups.PanelListY
 import me.anno.ui.base.scrolling.ScrollPanelY
 import me.anno.ui.custom.CustomList
 import me.anno.ui.editor.OptionBar
-import me.anno.ui.editor.UILayouts
 import me.anno.ui.editor.color.spaces.HSLuv
 import me.anno.ui.editor.config.ConfigPanel
 import me.anno.ui.input.EnumInput
@@ -29,11 +28,11 @@ import me.anno.ui.input.FileInput
 import me.anno.ui.input.FloatInput
 import me.anno.ui.input.IntInput
 import me.anno.utils.Color.rgba
+import me.anno.utils.Maths.length
 import me.anno.utils.io.ResourceHelper
 import org.joml.Vector3f
 import org.lwjgl.system.MemoryUtil
 import java.awt.image.BufferedImage
-import java.lang.Exception
 import java.util.*
 import javax.imageio.ImageIO
 import kotlin.math.*
@@ -46,6 +45,7 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
 
     var distanceType = DistanceType.MAX_NORM
     var texturePath = Texture.STAR.path
+    var connectionProtector = ConnectionProtector.NO_CHECKS
 
     class RawImage(w: Int, h: Int, val colorMap: IntArray) : Image() {
 
@@ -108,12 +108,10 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
         }
 
         fun mapValues() {
-            colors.position(0)
             // show all colors
             for (i in 0 until width * height) {
-                colors.put(colorMap[data[i].toInt()])
+                colors.put(i, colorMap[data[i]])
             }
-            colors.position(0)
             // show centers of colors
             for (i in 1 until colorMap.size) {
                 val population = populationCount[i]
@@ -140,7 +138,7 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
         var randomness = 0f
 
         fun calculateScore(x: Int, y: Int, i: Int, value: Int): Float {
-            // todo a sensible score
+            // a sensible score
             // a large population is bad
             val population = populationCount[value].toFloat()
             val sizeScore = -population
@@ -158,13 +156,19 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
             val radius = 2
             val size = radius * 2 + 1
 
+            val startTime = System.nanoTime()
+
             // sample randomly from x points:
             iterations@ for (iteration in 0 until iterationsPerFrame) {
+
+                val time = System.nanoTime()
+                if (abs(time - startTime) > 30_000_000) break@iterations
+
                 val x = radius + random.nextInt(width - 2 * radius)
                 val y = radius + random.nextInt(height - 2 * radius)
                 val i = x + y * width
 
-                if (data[i] == 0) continue
+                if (data[i] == 0) continue@iterations
 
                 val oldColor = data[i]
                 if (oldColor == data[i - 1] &&
@@ -182,74 +186,88 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
                     }
                 }
 
-                if (newColors.isEmpty()) continue
+                if (newColors.isEmpty()) continue@iterations
                 val newColor = newColors[random.nextInt(newColors.size)]
                 newColors.clear()
 
-                // todo cancel, if this change would split the two color fields
-                // todo das bräuchte Pathfinding... jeder Pixel muss zum Zentrum finden können
-
-                // todo all local pixels of the same color need to be able to find to the others of the same color
-                /*
-
-                //  0  1  2  3  4
-                //  5  6  7  8  9
-                // 10 11 12 13 14
-                // 15 16 17 18 19
-                // 20 21 22 23 24
-                for (dy in -radius..radius) {
-                    for (dx in -radius..radius) {
-                        localColors[(dx + radius) + (dy + radius) * size] =
-                            data[i + dx + dy * width]
+                // cancel, if this change would split the two color fields
+                // this would require pathfinding, and every pixel needs to be able to find its path to the center
+                when (connectionProtector) {
+                    ConnectionProtector.NO_CHECKS -> {
                     }
-                }
+                    ConnectionProtector.LINE_OF_SIGHT -> {
+                        // another way, still not perfect
+                        // line of sight must be fine
+                        val ncx = x - (centerXSum[newColor].toFloat() / populationCount[newColor])
+                        val ncy = y - (centerYSum[newColor].toFloat() / populationCount[newColor])
 
-                localColors[12] = newColor
-                for (j in 1 until size * size) {
-                    for (k in 0 until j) {
-                        // find path from j to k
-                        if (localColors[j] == localColors[k] && oldColor == localColors[k] &&
-                            !canFindPath(
-                                localColors, true, size, size,
-                                j % size, j / size, k % size, k / size
-                            )
-                        ) continue@iterations
-                    }
-                }*/
+                        val length = -(radius + 0.49f) / length(ncx, ncy)
 
-                // line of sight must be fine
-                /*val ncx = x - (centerXSum[newColor].toFloat() / populationCount[newColor])
-                val ncy = y - (centerYSum[newColor].toFloat() / populationCount[newColor])
+                        val dirX = (ncx * length).roundToInt()
+                        val dirY = (ncy * length).roundToInt()
 
-                val length = -(radius + 0.49f) / length(ncx, ncy)
+                        /*if (abs(ncx) > abs(ncy)) { // dx
+                            dirX = if (ncx < 0) +1 else -1
+                        } else {
+                            dirY = if (ncy < 0) +1 else -1
+                        }*/
 
-                val dirX = (ncx * length).roundToInt()
-                val dirY = (ncy * length).roundToInt()
-
-                /*if (abs(ncx) > abs(ncy)) { // dx
-                    dirX = if (ncx < 0) +1 else -1
-                } else {
-                    dirY = if (ncy < 0) +1 else -1
-                }*/
-
-                // line of sight of new color must be ok
-                if (data[i + dirX + dirY * width].toInt() != newColor) {
-                    continue
-                }// */
-
-                // extremely slow
-                /*data[i] = newColor.toByte()
-                var isOK = true
-                search@ for (dy in -1..+1) {
-                    for (dx in -1..+1) {
-                        if (!findsPathToCenter(x + dx, y + dy)) {
-                            isOK = false
-                            break@search
+                        // line of sight of new color must be ok
+                        if (data[i + dirX + dirY * width] != newColor) {
+                            continue@iterations
                         }
                     }
+                    ConnectionProtector.LOCAL_PATHFINDING -> {
+
+                        // all local pixels of the same color need to be able to find to the others of the same color
+                        // a simple way, but it's not perfect
+
+                        //  0  1  2  3  4
+                        //  5  6  7  8  9
+                        // 10 11 12 13 14
+                        // 15 16 17 18 19
+                        // 20 21 22 23 24
+                        for (dy in -radius..radius) {
+                            for (dx in -radius..radius) {
+                                localColors[(dx + radius) + (dy + radius) * size] =
+                                    data[i + dx + dy * width]
+                            }
+                        }
+
+                        localColors[12] = newColor
+                        for (j in 1 until size * size) {
+                            for (k in 0 until j) {
+                                // find path from j to k
+                                if (localColors[j] == localColors[k] && oldColor == localColors[k] &&
+                                    !canFindPath(
+                                        localColors, true, size, size,
+                                        j % size, j / size, k % size, k / size
+                                    )
+                                ) continue@iterations
+                            }
+                        }
+
+                    }
+                    ConnectionProtector.EXPENSIVE_PATHFINDING -> {
+
+                        // extremely slow, but perfect (I think)
+                        // todo -> just as it sounds, we could optimize it slightly :) (x5-x10 maybe)
+                        data[i] = newColor
+                        var isOK = true
+                        search@ for (dy in -1..+1) {
+                            for (dx in -1..+1) {
+                                if (!findsPathToCenter(x + dx, y + dy)) {
+                                    isOK = false
+                                    break@search
+                                }
+                            }
+                        }
+                        data[i] = oldColor
+                        if (!isOK) continue@iterations
+                    }
+
                 }
-                data[i] = oldColor.toByte()
-                if (!isOK) continue*/
+
 
                 // if border, then look whether the change is possible
                 val isBorder = newColor != oldColor
@@ -310,7 +328,7 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
                         val ny = y + dy
                         if (nx == targetX && ny == targetY) return true
                         if (nx in 0 until width && ny in 0 until height) {
-                            // todo add this, if not already done
+                            // add this, if not already done
                             val index = nx + ny * width
                             if (data[index] == type && doneIndices.add(index)) {
                                 todoX.add(nx)
@@ -386,7 +404,7 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
             tex?.destroy()
             tex = Texture2D("map", map.width, map.height, 1)
 
-        } catch (e: Exception){
+        } catch (e: Exception) {
             e.printStackTrace()
         }
 
@@ -460,7 +478,7 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
             }
         })
         var pathValue = ""
-        val pathInput = FileInput("Custom Path", style, InvalidRef, false)
+        val pathInput = FileInput("Custom path for texture", style, InvalidRef, false)
         pathInput.setChangeListener {
             texturePath = it.absolutePath;
             pathValue = texturePath;
@@ -470,7 +488,7 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
         controls.add(pathInput)
         controls.add(
             EnumInput(
-                "Texture", true, texturePath,
+                "Texture for outlines", true, texturePath,
                 Texture.values().map { NameDesc(it.name) }, style
             ).apply {
                 setChangeListener { _, index, _ ->
@@ -485,6 +503,15 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
                 }
             }
         )
+
+        controls.add(
+            EnumInput("Border checks", true, connectionProtector.name,
+                ConnectionProtector.values().map { NameDesc(it.name) }, style
+            ).apply {
+                setChangeListener { _, index, _ -> connectionProtector = ConnectionProtector.values()[index] }
+            }
+        )
+
         x.add(ScrollPanelY(controls, style).apply { weight = 0.2f })
 
         y.add(x)
