@@ -18,8 +18,8 @@ This experiment is using my game engine [Rem's Engine](https://github.com/Antoni
 ![Preview of the program](https://raw.githubusercontent.com/AntonioNoack/MonteCarloMapOptimization/main/img/preview.png)
 
 ## Download
-- and yeah, the executable is just that large, because it uses my video editor
+- and yeah, the executable is just that large, because it uses my whole game engine
 - but it makes all stuff easier, that's why I use it
-- you need to have Java installed
+- you need Java to run it
 
 [Download it here as an .jar file](https://phychi.com/download/MonteCarloVoteGerrymandering.jar)
