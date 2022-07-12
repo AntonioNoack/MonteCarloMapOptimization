@@ -3,23 +3,25 @@ package me.anno.montecarlo
 import me.anno.animation.Type
 import me.anno.config.DefaultConfig
 import me.anno.config.DefaultConfig.style
-import me.anno.gpu.GFX.windowStack
-import me.anno.gpu.Window
+import me.anno.engine.EngineActions
+import me.anno.gpu.GFX
 import me.anno.gpu.texture.Texture2D
 import me.anno.image.Image
 import me.anno.input.ActionManager
-import me.anno.input.Input
+import me.anno.io.ResourceHelper
 import me.anno.io.files.FileReference.Companion.getReference
 import me.anno.io.files.InvalidRef
 import me.anno.language.translation.Dict
 import me.anno.language.translation.NameDesc
+import me.anno.maths.Maths.length
 import me.anno.studio.StudioBase
-import me.anno.studio.rems.StudioActions
-import me.anno.ui.base.Panel
+import me.anno.ui.Panel
+import me.anno.ui.Window
 import me.anno.ui.base.Visibility
 import me.anno.ui.base.groups.PanelListY
 import me.anno.ui.base.scrolling.ScrollPanelY
 import me.anno.ui.custom.CustomList
+import me.anno.ui.debug.ConsoleOutputPanel.Companion.createConsole
 import me.anno.ui.editor.OptionBar
 import me.anno.ui.editor.color.spaces.HSLuv
 import me.anno.ui.editor.config.ConfigPanel
@@ -28,8 +30,6 @@ import me.anno.ui.input.FileInput
 import me.anno.ui.input.FloatInput
 import me.anno.ui.input.IntInput
 import me.anno.utils.Color.rgba
-import me.anno.utils.Maths.length
-import me.anno.utils.io.ResourceHelper
 import org.joml.Vector3f
 import org.lwjgl.system.MemoryUtil
 import java.awt.image.BufferedImage
@@ -47,15 +47,12 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
     var texturePath = Texture.STAR.path
     var connectionProtector = ConnectionProtector.NO_CHECKS
 
-    class RawImage(w: Int, h: Int, val colorMap: IntArray) : Image() {
-
-        init {
-            width = w
-            height = h
-        }
+    class RawImage(w: Int, h: Int, val colorMap: IntArray) : Image(w, h, 4, true) {
 
         val data = IntArray(width * height)
         val colors = MemoryUtil.memAllocInt(width * height)
+
+        override fun getRGB(index: Int) = colors[index]
 
         constructor(image: BufferedImage, colorMap: IntArray) : this(image.width, image.height, colorMap) {
             val dc = colorMap.size - 1
@@ -86,7 +83,7 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
             for (y in 0 until height) {
                 for (x in 0 until width) {
                     val i = x + y * width
-                    val dataI = data[i].toInt()
+                    val dataI = data[i]
                     populationCount[dataI]++
                     centerXSum[dataI] += x.toLong()
                     centerYSum[dataI] += y.toLong()
@@ -127,10 +124,6 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
                     }
                 }
             }
-        }
-
-        override fun createBufferedImage(): BufferedImage {
-            throw RuntimeException()
         }
 
         val random = Random(1234L)
@@ -300,8 +293,7 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
         fun findsPathToCenter(x0: Int, y0: Int): Boolean {
 
             val type = data[x0 + y0 * width]
-            val typeI = type.toInt()
-            if (typeI == 0) return true
+            if (type == 0) return true
 
             val todoX = ArrayList<Int>()
             val todoY = ArrayList<Int>()
@@ -309,8 +301,8 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
             todoX.add(x0)
             todoY.add(y0)
 
-            val targetX = (centerXSum[typeI] / populationCount[typeI]).toInt()
-            val targetY = (centerYSum[typeI] / populationCount[typeI]).toInt()
+            val targetX = (centerXSum[type] / populationCount[type]).toInt()
+            val targetY = (centerYSum[type] / populationCount[type]).toInt()
 
             if (targetX == x0 && targetY == y0) return true
 
@@ -411,10 +403,13 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
     }
 
     fun createReloadWindow(panel: Panel, fullscreen: Boolean): Window {
+        val window = GFX.someWindow
+        val windowStack = window.windowStack
         return object : Window(
             panel, fullscreen,
-            if (fullscreen) 0 else Input.mouseX.toInt(),
-            if (fullscreen) 0 else Input.mouseY.toInt()
+            windowStack,
+            if (fullscreen) 0 else window.mouseX.toInt(),
+            if (fullscreen) 0 else window.mouseY.toInt(),
         ) {
             override fun destroy() {
                 createUI()
@@ -424,6 +419,7 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
 
     override fun createUI() {
 
+        val windowStack = GFX.someWindow.windowStack
         windowStack.clear()
 
         Dict.loadDefault()
@@ -459,10 +455,10 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
         sceneView.weight = 1f
 
         val controls = PanelListY(style)
-        controls.add(FloatInput("Randomness", map.randomness, Type.FLOAT_01, style).apply {
+        controls.add(FloatInput("Randomness", "", map.randomness, Type.FLOAT_01, style).apply {
             setChangeListener { map.randomness = it.toFloat() }
         })
-        controls.add(IntInput("Samples/Frame", iterationsPerFrame, Type.INT_PLUS, style).apply {
+        controls.add(IntInput("Samples/Frame", "", iterationsPerFrame, Type.INT_PLUS, style).apply {
             setChangeListener { iterationsPerFrame = it.toInt() }
         })
         controls.add(
@@ -471,14 +467,14 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
                 DistanceType.values().map { NameDesc(it.displayName) }, style
             ).apply { setChangeListener { _, index, _ -> distanceType = DistanceType.values()[index] } }
         )
-        controls.add(IntInput("District Count", districtCount, Type.INT_PLUS, style).apply {
+        controls.add(IntInput("District Count", "", districtCount, Type.INT_PLUS, style).apply {
             setChangeListener {
                 districtCount = max(1, it.toInt())
                 restart()
             }
         })
         var pathValue = ""
-        val pathInput = FileInput("Custom path for texture", style, InvalidRef, false)
+        val pathInput = FileInput("Custom path for texture", style, InvalidRef, emptyList(), false)
         pathInput.setChangeListener {
             texturePath = it.absolutePath;
             pathValue = texturePath;
@@ -505,7 +501,8 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
         )
 
         controls.add(
-            EnumInput("Border checks", true, connectionProtector.name,
+            EnumInput(
+                "Border checks", true, connectionProtector.name,
                 ConnectionProtector.values().map { NameDesc(it.name) }, style
             ).apply {
                 setChangeListener { _, index, _ -> connectionProtector = ConnectionProtector.values()[index] }
@@ -516,11 +513,11 @@ object Studio : StudioBase(false, "Monte Carlo Map Optimization", "MapOptimizati
 
         y.add(x)
 
-        y.add(createConsole())
+        y.add(createConsole(style))
 
-        windowStack.add(Window(y))
+        windowStack.add(Window(y, false, windowStack))
 
-        StudioActions.register()
+        EngineActions.register()
         ActionManager.init()
     }
 

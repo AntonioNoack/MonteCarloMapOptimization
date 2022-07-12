@@ -2,7 +2,7 @@
 Just a little experiment inspired by https://youtu.be/Lq-Y7crQo44
 
 ## Libraries:
-This experiment is using [my video editor Rem's Studio](https://github.com/AntonioNoack/RemsStudio/) as its engine.
+This experiment is using my game engine [Rem's Engine](https://github.com/AntonioNoack/RemsEngine/) as its engine.
 
 ## Limitations:
 - no voting gerrymandering

@@ -4,7 +4,7 @@ import me.anno.config.DefaultConfig.style
 import me.anno.gpu.drawing.DrawTextures.drawTexture
 import me.anno.montecarlo.Studio.map
 import me.anno.montecarlo.Studio.tex
-import me.anno.ui.base.Panel
+import me.anno.ui.Panel
 
 class TextureView : Panel(style) {
 
@@ -23,7 +23,7 @@ class TextureView : Panel(style) {
         // map the data to colors
         map.mapValues()
         // upload the image
-        tex.createRGBA(map.colors)
+        tex.create(map, sync = true, checkRedundancy = false)
         // draw the image
         tex.bind(0)
 
